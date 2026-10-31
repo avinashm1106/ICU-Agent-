@@ -1,0 +1,199 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  CONSULTANT
+  STAFF
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  BLOCKED
+  OVERDUE
+  CANCELLED
+}
+
+enum TaskSource {
+  VOICE
+  MANUAL
+  SYSTEM
+}
+
+model Hospital {
+  id    String @id @default(cuid())
+  name  String
+  icus  ICU[]
+  users User[]
+}
+
+model ICU {
+  id         String          @id @default(cuid())
+  name       String
+  hospitalId String
+  hospital   Hospital        @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  users      User[]
+  patients   Patient[]
+  tasks      Task[]
+  escalation EscalationRule?
+}
+
+model User {
+  id            String            @id @default(cuid())
+  name          String
+  email         String            @unique
+  passwordHash  String
+  role          Role
+  active        Boolean           @default(true)
+  hospitalId    String
+  hospital      Hospital          @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  icuId         String?
+  icu           ICU?              @relation(fields: [icuId], references: [id], onDelete: SetNull)
+  assigned      Task[]            @relation("Assigned")
+  created       Task[]            @relation("Created")
+  notifications Notification[]
+  messages      WhatsAppMessage[]
+  audit         AuditLog[]
+  voiceSessions VoiceSession[]
+  responses     TaskResponse[]
+}
+
+model Patient {
+  id        String @id @default(cuid())
+  name      String
+  bedNumber Int
+  icuId     String
+  icu       ICU    @relation(fields: [icuId], references: [id], onDelete: Cascade)
+  tasks     Task[]
+
+  @@unique([icuId, bedNumber])
+}
+
+model Task {
+  id             String            @id @default(cuid())
+  title          String
+  description    String            @default("")
+  priority       Priority          @default(MEDIUM)
+  status         TaskStatus        @default(PENDING)
+  source         TaskSource        @default(MANUAL)
+  bedNumber      Int?
+  deadline       DateTime?
+  completedAt    DateTime?
+  responseAt     DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  assignedToId   String
+  assignedTo     User              @relation("Assigned", fields: [assignedToId], references: [id], onDelete: Restrict)
+  createdById    String
+  createdBy      User              @relation("Created", fields: [createdById], references: [id], onDelete: Restrict)
+  icuId          String
+  icu            ICU               @relation(fields: [icuId], references: [id], onDelete: Cascade)
+  patientId      String?
+  patient        Patient?          @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  voiceSessionId String?
+  voiceSession   VoiceSession?     @relation(fields: [voiceSessionId], references: [id], onDelete: SetNull)
+  assignments    TaskAssignment[]
+  responses      TaskResponse[]
+  reminders      Reminder[]
+  messages       WhatsAppMessage[]
+}
+
+model TaskAssignment {
+  id         String   @id @default(cuid())
+  taskId     String
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId     String
+  assignedAt DateTime @default(now())
+}
+
+model TaskResponse {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answer    String
+  createdAt DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  text      String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model WhatsAppMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId    String?
+  task      Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  text      String
+  direction String
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  actor     User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action    String
+  entity    String
+  entityId  String
+  metadata  String?
+  createdAt DateTime @default(now())
+}
+
+model EscalationRule {
+  id              String @id @default(cuid())
+  icuId           String @unique
+  icu             ICU    @relation(fields: [icuId], references: [id], onDelete: Cascade)
+  firstSeconds    Int    @default(900)
+  secondSeconds   Int    @default(1800)
+  escalateSeconds Int    @default(2700)
+}
+
+model VoiceSession {
+  id           String   @id @default(cuid())
+  consultantId String
+  consultant   User     @relation(fields: [consultantId], references: [id], onDelete: Cascade)
+  transcript   String
+  extraction   String?
+  createdAt    DateTime @default(now())
+  tasks        Task[]
+}
+
+model AIExtraction {
+  id         String   @id @default(cuid())
+  transcript String
+  result     String
+  createdAt  DateTime @default(now())
+}
+
+model Reminder {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  level     Int
+  createdAt DateTime @default(now())
+
+  @@unique([taskId, level])
+}
